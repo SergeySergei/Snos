@@ -1,0 +1,71 @@
+import telebot
+from telebot import types
+
+API_TOKEN = '8764917413:AAHgg7DoT9uGV6R9LmTx_8B8TlPCFTSQAv8'
+ADMIN_ID = 7158255419
+
+bot = telebot.TeleBot(API_TOKEN)
+
+users_data = {}
+current_proxy = None
+
+def get_user_data(user_id):
+    if user_id not in users_data:
+        users_data[user_id] = {'referrals': 0, 'referred_by': None}
+    return users_data[user_id]
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    user_id = message.from_user.id
+    get_user_data(user_id)
+    
+    args = message.text.split()
+    if len(args) > 1:
+        referrer_id = int(args[1])
+        if referrer_id != user_id and users_data[user_id]['referred_by'] is None:
+            users_data[user_id]['referred_by'] = referrer_id
+            get_user_data(referrer_id)['referrals'] += 1
+
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("рефэрал", callback_data="referral"))
+    
+    if user_id == ADMIN_ID:
+        markup.add(types.InlineKeyboardButton("добавить", callback_data="add_proxy"))
+        
+    bot.send_message(message.chat.id, "здрасти", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: True)
+def callback_query(call):
+    user_id = call.from_user.id
+    data = get_user_data(user_id)
+
+    if call.data == "referral":
+        ref_link = f"https://t.me/{(bot.get_me()).username}?start={user_id}"
+        proxies_count = 1 if current_proxy else 0
+        text = f"{ref_link}\n{data['referrals']} из 2\n{proxies_count}"
+        
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("забрать", callback_data="claim"))
+        bot.send_message(call.message.chat.id, text, reply_markup=markup)
+
+    elif call.data == "claim":
+        if data['referrals'] < 2:
+            bot.send_message(call.message.chat.id, "нэд")
+        else:
+            if current_proxy:
+                bot.send_message(call.message.chat.id, current_proxy)
+                data['referrals'] = 0
+            else:
+                bot.send_message(call.message.chat.id, "нэээээд")
+
+    elif call.data == "add_proxy" and user_id == ADMIN_ID:
+        msg = bot.send_message(call.message.chat.id, "пиши сылку прокси")
+        bot.register_next_step_handler(msg, save_proxy)
+
+def save_proxy(message):
+    global current_proxy
+    if message.from_user.id == ADMIN_ID:
+        current_proxy = message.text
+        bot.send_message(message.chat.id, "ок")
+
+bot.polling(none_stop=True)
